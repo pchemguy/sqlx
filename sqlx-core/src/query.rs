@@ -9,13 +9,14 @@ use crate::database::{Database, HasStatementCache};
 use crate::encode::Encode;
 use crate::error::Error;
 use crate::executor::{Execute, Executor};
+use crate::query_string::{QuerySafeStr, QueryString};
 use crate::statement::Statement;
 use crate::types::Type;
 
 /// A single SQL query as a prepared statement. Returned by [`query()`].
 #[must_use = "query must be executed to affect database"]
 pub struct Query<'q, DB: Database, A> {
-    pub(crate) statement: Either<&'q str, &'q DB::Statement<'q>>,
+    pub(crate) statement: Either<QueryString<'q>, &'q DB::Statement<'q>>,
     pub(crate) arguments: Option<A>,
     pub(crate) database: PhantomData<DB>,
     pub(crate) persistent: bool,
@@ -45,9 +46,9 @@ where
 {
     #[inline]
     fn sql(&self) -> &'q str {
-        match self.statement {
-            Either::Right(ref statement) => statement.sql(),
-            Either::Left(sql) => sql,
+        match &self.statement {
+            Either::Right(statement) => statement.sql(),
+            Either::Left(sql) => sql.as_str(),
         }
     }
 
@@ -619,14 +620,15 @@ where
 ///
 /// As an additional benefit, query parameters are usually sent in a compact binary encoding instead of a human-readable
 /// text encoding, which saves bandwidth.
-pub fn query<DB>(sql: &str) -> Query<'_, DB, <DB as Database>::Arguments<'_>>
+pub fn query<'q, DB, SQL>(sql: SQL) -> Query<'q, DB, <DB as Database>::Arguments<'q>>
 where
     DB: Database,
+    SQL: QuerySafeStr,
 {
     Query {
         database: PhantomData,
         arguments: Some(Default::default()),
-        statement: Either::Left(sql),
+        statement: Either::Left(sql.into_query_string()),
         persistent: true,
     }
 }
@@ -634,7 +636,7 @@ where
 /// Execute a SQL query as a prepared statement (transparently cached), with the given arguments.
 ///
 /// See [`query()`][query] for details, such as supported syntax.
-pub fn query_with<'q, DB, A>(sql: &'q str, arguments: A) -> Query<'q, DB, A>
+pub fn query_with<'q, DB, SQL, A>(sql: SQL, arguments: A) -> Query<'q, DB, A>
 where
     DB: Database,
     A: IntoArguments<'q, DB>,
@@ -642,7 +644,7 @@ where
     Query {
         database: PhantomData,
         arguments: Some(arguments),
-        statement: Either::Left(sql),
+        statement: Either::Left(sql.into_query_string()),
         persistent: true,
     }
 }

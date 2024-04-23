@@ -4,6 +4,7 @@ use futures_util::{StreamExt, TryFutureExt, TryStreamExt};
 
 use crate::arguments::IntoArguments;
 use crate::database::{Database, HasStatementCache};
+use crate::decode::Decode;
 use crate::encode::Encode;
 use crate::error::Error;
 use crate::executor::{Execute, Executor};
@@ -11,6 +12,7 @@ use crate::from_row::FromRow;
 use crate::query_as::{
     query_as, query_as_with, query_statement_as, query_statement_as_with, QueryAs,
 };
+use crate::query_string::QuerySafeStr;
 use crate::types::Type;
 
 /// A single SQL query as a prepared statement which extracts only the first column of each row.
@@ -318,12 +320,13 @@ where
 /// # }
 /// ```
 #[inline]
-pub fn query_scalar<'q, DB, O>(
-    sql: &'q str,
+pub fn query_scalar<'q, DB, SQL, O>(
+    sql: SQL,
 ) -> QueryScalar<'q, DB, O, <DB as Database>::Arguments<'q>>
 where
     DB: Database,
-    (O,): for<'r> FromRow<'r, DB::Row>,
+    SQL: QuerySafeStr<'q>,
+    O: Type<DB> + for<'r> Decode<'r, DB>,
 {
     QueryScalar {
         inner: query_as(sql),
@@ -337,11 +340,12 @@ where
 ///
 /// For details about prepared statements and allowed SQL syntax, see [`query()`][crate::query::query].
 #[inline]
-pub fn query_scalar_with<'q, DB, O, A>(sql: &'q str, arguments: A) -> QueryScalar<'q, DB, O, A>
+pub fn query_scalar_with<'q, DB, SQL, O, A>(sql: SQL, arguments: A) -> QueryScalar<'q, DB, O, A>
 where
     DB: Database,
+    SQL: QuerySafeStr<'q>,
     A: IntoArguments<'q, DB>,
-    (O,): for<'r> FromRow<'r, DB::Row>,
+    O: Type<DB> + for<'r> Decode<'r, DB>,
 {
     QueryScalar {
         inner: query_as_with(sql, arguments),
@@ -354,7 +358,7 @@ pub fn query_statement_scalar<'q, DB, O>(
 ) -> QueryScalar<'q, DB, O, <DB as Database>::Arguments<'_>>
 where
     DB: Database,
-    (O,): for<'r> FromRow<'r, DB::Row>,
+    O: Type<DB> + for<'r> Decode<'r, DB>,
 {
     QueryScalar {
         inner: query_statement_as(statement),
@@ -369,7 +373,7 @@ pub fn query_statement_scalar_with<'q, DB, O, A>(
 where
     DB: Database,
     A: IntoArguments<'q, DB>,
-    (O,): for<'r> FromRow<'r, DB::Row>,
+    O: Type<DB> + for<'r> Decode<'r, DB>,
 {
     QueryScalar {
         inner: query_statement_as_with(statement, arguments),

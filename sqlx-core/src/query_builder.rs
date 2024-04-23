@@ -13,6 +13,7 @@ use crate::query_as::QueryAs;
 use crate::query_scalar::QueryScalar;
 use crate::types::Type;
 use crate::Either;
+use crate::query_string::AssertQuerySafe;
 
 /// A builder type for constructing queries at runtime.
 ///
@@ -448,12 +449,7 @@ where
     pub fn build(&mut self) -> Query<'_, DB, <DB as Database>::Arguments<'args>> {
         self.sanity_check();
 
-        Query {
-            statement: Either::Left(&self.query),
-            arguments: self.arguments.take(),
-            database: PhantomData,
-            persistent: true,
-        }
+        crate::query::query_with(AssertQuerySafe(&self.query), self.arguments.take())
     }
 
     /// Produce an executable query from this builder.
