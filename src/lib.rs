@@ -134,7 +134,9 @@ pub use self::decode::Decode;
 pub mod query {
     pub use sqlx_core::query::{Map, Query};
     pub use sqlx_core::query_as::QueryAs;
+    pub use sqlx_core::query_builder::{QueryBuilder, Separated};
     pub use sqlx_core::query_scalar::QueryScalar;
+    pub use sqlx_core::query_string::{AssertQuerySafe, QuerySafeStr, QueryString};
 }
 
 /// Convenience re-export of common traits.

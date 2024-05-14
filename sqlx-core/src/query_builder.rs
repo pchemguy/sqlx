@@ -2,7 +2,6 @@
 
 use std::fmt::Display;
 use std::fmt::Write;
-use std::marker::PhantomData;
 
 use crate::arguments::{Arguments, IntoArguments};
 use crate::database::Database;
@@ -11,9 +10,8 @@ use crate::from_row::FromRow;
 use crate::query::Query;
 use crate::query_as::QueryAs;
 use crate::query_scalar::QueryScalar;
-use crate::types::Type;
-use crate::Either;
 use crate::query_string::AssertQuerySafe;
+use crate::types::Type;
 
 /// A builder type for constructing queries at runtime.
 ///
@@ -41,6 +39,9 @@ impl<'args, DB: Database> Default for QueryBuilder<'args, DB> {
     }
 }
 
+const TAKE_ARGUMENTS_ERR: &'static str =
+    "Before reusing QueryBuilder after `.build()` (or its variants), you must call `.reset()`";
+
 impl<'args, DB: Database> QueryBuilder<'args, DB>
 where
     DB: Database,
@@ -49,8 +50,8 @@ where
     // such as `INSERT INTO ...` or `SELECT ...`, etc.
     /// Start building a query with an initial SQL fragment, which may be an empty string.
     pub fn new(init: impl Into<String>) -> Self
-    where
-        <DB as Database>::Arguments<'args>: Default,
+        where
+            <DB as Database>::Arguments<'args>: Default,
     {
         let init = init.into();
 
@@ -66,9 +67,9 @@ where
     /// ### Note
     /// This does *not* check if `arguments` is valid for the given SQL.
     pub fn with_arguments<A>(init: impl Into<String>, arguments: A) -> Self
-    where
-        DB: Database,
-        A: IntoArguments<'args, DB>,
+        where
+            DB: Database,
+            A: IntoArguments<'args, DB>,
     {
         let init = init.into();
 
@@ -81,10 +82,7 @@ where
 
     #[inline]
     fn sanity_check(&self) {
-        assert!(
-            self.arguments.is_some(),
-            "QueryBuilder must be reset before reuse after `.build()`"
-        );
+        assert!(self.arguments.is_some(), "{TAKE_ARGUMENTS_ERR}");
     }
 
     /// Append a SQL fragment to the query.
@@ -147,8 +145,8 @@ where
     /// [`SQLITE_LIMIT_VARIABLE_NUMBER`]: https://www.sqlite.org/limits.html#max_variable_number
     /// [postgres-limit-issue]: https://github.com/launchbadge/sqlx/issues/671#issuecomment-687043510
     pub fn push_bind<T>(&mut self, value: T) -> &mut Self
-    where
-        T: 'args + Encode<'args, DB> + Type<DB>,
+        where
+            T: 'args + Encode<'args, DB> + Type<DB>,
     {
         self.sanity_check();
 
@@ -194,9 +192,9 @@ where
     /// ```
 
     pub fn separated<'qb, Sep>(&'qb mut self, separator: Sep) -> Separated<'qb, 'args, DB, Sep>
-    where
-        'args: 'qb,
-        Sep: Display,
+        where
+            'args: 'qb,
+            Sep: Display,
     {
         self.sanity_check();
 
@@ -305,9 +303,9 @@ where
     /// # }
     /// ```
     pub fn push_values<I, F>(&mut self, tuples: I, mut push_tuple: F) -> &mut Self
-    where
-        I: IntoIterator,
-        F: FnMut(Separated<'_, 'args, DB, &'static str>, I::Item),
+        where
+            I: IntoIterator,
+            F: FnMut(Separated<'_, 'args, DB, &'static str>, I::Item),
     {
         self.sanity_check();
 
@@ -412,9 +410,9 @@ where
     /// }
     /// ```
     pub fn push_tuples<I, F>(&mut self, tuples: I, mut push_tuple: F) -> &mut Self
-    where
-        I: IntoIterator,
-        F: FnMut(Separated<'_, 'args, DB, &'static str>, I::Item),
+        where
+            I: IntoIterator,
+            F: FnMut(Separated<'_, 'args, DB, &'static str>, I::Item),
     {
         self.sanity_check();
 
@@ -432,69 +430,6 @@ where
         separated.push_unseparated(") ");
 
         separated.query_builder
-    }
-
-    /// Produce an executable query from this builder.
-    ///
-    /// ### Note: Query is not Checked
-    /// It is your responsibility to ensure that you produce a syntactically correct query here,
-    /// this API has no way to check it for you.
-    ///
-    /// ### Note: Reuse
-    /// You can reuse this builder afterwards to amortize the allocation overhead of the query
-    /// string, however you must call [`.reset()`][Self::reset] first, which returns `Self`
-    /// to the state it was in immediately after [`new()`][Self::new].
-    ///
-    /// Calling any other method but `.reset()` after `.build()` will panic for sanity reasons.
-    pub fn build(&mut self) -> Query<'_, DB, <DB as Database>::Arguments<'args>> {
-        self.sanity_check();
-
-        crate::query::query_with(AssertQuerySafe(&self.query), self.arguments.take())
-    }
-
-    /// Produce an executable query from this builder.
-    ///
-    /// ### Note: Query is not Checked
-    /// It is your responsibility to ensure that you produce a syntactically correct query here,
-    /// this API has no way to check it for you.
-    ///
-    /// ### Note: Reuse
-    /// You can reuse this builder afterwards to amortize the allocation overhead of the query
-    /// string, however you must call [`.reset()`][Self::reset] first, which returns `Self`
-    /// to the state it was in immediately after [`new()`][Self::new].
-    ///
-    /// Calling any other method but `.reset()` after `.build()` will panic for sanity reasons.
-    pub fn build_query_as<'q, T: FromRow<'q, DB::Row>>(
-        &'q mut self,
-    ) -> QueryAs<'q, DB, T, <DB as Database>::Arguments<'args>> {
-        QueryAs {
-            inner: self.build(),
-            output: PhantomData,
-        }
-    }
-
-    /// Produce an executable query from this builder.
-    ///
-    /// ### Note: Query is not Checked
-    /// It is your responsibility to ensure that you produce a syntactically correct query here,
-    /// this API has no way to check it for you.
-    ///
-    /// ### Note: Reuse
-    /// You can reuse this builder afterwards to amortize the allocation overhead of the query
-    /// string, however you must call [`.reset()`][Self::reset] first, which returns `Self`
-    /// to the state it was in immediately after [`new()`][Self::new].
-    ///
-    /// Calling any other method but `.reset()` after `.build()` will panic for sanity reasons.
-    pub fn build_query_scalar<'q, T>(
-        &'q mut self,
-    ) -> QueryScalar<'q, DB, T, <DB as Database>::Arguments<'args>>
-    where
-        DB: Database,
-        (T,): for<'r> FromRow<'r, DB::Row>,
-    {
-        QueryScalar {
-            inner: self.build_query_as(),
-        }
     }
 
     /// Reset this `QueryBuilder` back to its initial state.
@@ -516,6 +451,174 @@ where
     /// Deconstruct this `QueryBuilder`, returning the built SQL. May not be syntactically correct.
     pub fn into_sql(self) -> String {
         self.query
+    }
+}
+
+impl<'args, DB: Database> QueryBuilder<'args, DB>
+where
+    DB: Database,
+    // Somewhat redundant trait bound, but needed to satisfy the compiler.
+    // Using a separate `impl` block to scope this requirement to just the methods that need it.
+    DB::Arguments<'args>: IntoArguments<'args, DB>,
+{
+    /// Produce an executable query from this builder.
+    ///
+    /// To take ownership of the query string, use [`.into_query()`][Self::into_query]
+    /// or one of the `From<QueryBuilder>` impls.
+    ///
+    /// ### Note: Query is not Checked
+    /// It is your responsibility to ensure that you produce a syntactically correct query here,
+    /// this API has no way to check it for you.
+    ///
+    /// ### Note: Reuse
+    /// You can reuse this builder afterwards to amortize the allocation overhead of the query
+    /// string, however you must call [`.reset()`][Self::reset] first, which returns `Self`
+    /// to the state it was in immediately after [`new()`][Self::new].
+    ///
+    /// Calling any other method but `.reset()` after `.build()` will panic for sanity reasons.
+    pub fn build<'q>(&'q mut self) -> Query<'q, DB, <DB as Database>::Arguments<'args>> {
+        crate::query::query_with(
+            AssertQuerySafe(&self.query),
+            self.arguments.take().expect(TAKE_ARGUMENTS_ERR),
+        )
+    }
+
+    /// Produce an executable query from this builder, with an owned query string.
+    ///
+    /// ### Note: Query is not Checked
+    /// It is your responsibility to ensure that you produce a syntactically correct query here,
+    /// this API has no way to check it for you.
+    pub fn into_query(mut self) -> Query<'static, DB, <DB as Database>::Arguments<'args>> {
+        crate::query::query_with(
+            AssertQuerySafe(self.query),
+            self.arguments.expect(TAKE_ARGUMENTS_ERR),
+        )
+    }
+
+    /// Produce an executable query from this builder.
+    ///
+    /// To take ownership of the query string, use [`.into_query_as()`][Self::into_query_as]
+    /// or one of the `From<QueryBuilder>` impls.
+    ///
+    /// ### Note: Query is not Checked
+    /// It is your responsibility to ensure that you produce a syntactically correct query here,
+    /// this API has no way to check it for you.
+    ///
+    /// ### Note: Reuse
+    /// You can reuse this builder afterwards to amortize the allocation overhead of the query
+    /// string, however you must call [`.reset()`][Self::reset] first, which returns `Self`
+    /// to the state it was in immediately after [`new()`][Self::new].
+    ///
+    /// Calling any other method but `.reset()` after `.build()` will panic for sanity reasons.
+    pub fn build_query_as<'q, O>(
+        &'q mut self,
+    ) -> QueryAs<'q, DB, O, <DB as Database>::Arguments<'args>>
+    where
+        O: for<'r> FromRow<'r, DB::Row>,
+    {
+        crate::query_as::query_as_with(
+            AssertQuerySafe(&self.query),
+            self.arguments.take().expect(TAKE_ARGUMENTS_ERR),
+        )
+    }
+
+    /// Produce an executable query from this builder, with an owned query string.
+    ///
+    /// ### Note: Query is not Checked
+    /// It is your responsibility to ensure that you produce a syntactically correct query here,
+    /// this API has no way to check it for you.
+    pub fn into_query_as<O>(mut self) -> QueryAs<'static, DB, O, <DB as Database>::Arguments<'args>>
+    where
+        O: for<'r> FromRow<'r, DB::Row>,
+    {
+        crate::query_as::query_as_with(
+            AssertQuerySafe(self.query),
+            self.arguments.expect(TAKE_ARGUMENTS_ERR),
+        )
+    }
+
+    /// Produce an executable query from this builder.
+    ///
+    /// To take ownership of the query string, use [`.into_query_as()`][Self::into_query_as]
+    /// or one of the `From<QueryBuilder>` impls.
+    ///
+    /// ### Note: Query is not Checked
+    /// It is your responsibility to ensure that you produce a syntactically correct query here,
+    /// this API has no way to check it for you.
+    ///
+    /// ### Note: Reuse
+    /// You can reuse this builder afterwards to amortize the allocation overhead of the query
+    /// string, however you must call [`.reset()`][Self::reset] first, which returns `Self`
+    /// to the state it was in immediately after [`new()`][Self::new].
+    ///
+    /// Calling any other method but `.reset()` after `.build()` will panic for sanity reasons.
+    pub fn build_query_scalar<'q, T>(
+        &'q mut self,
+    ) -> QueryScalar<'q, DB, T, <DB as Database>::Arguments<'args>>
+    where
+        DB: Database,
+        (T,): for<'r> FromRow<'r, DB::Row>,
+    {
+        crate::query_scalar::query_scalar_with(
+            AssertQuerySafe(&self.query),
+            self.arguments.take().expect(TAKE_ARGUMENTS_ERR),
+        )
+    }
+
+    /// Produce an executable query from this builder, with an owned query string.
+    ///
+    /// ### Note: Query is not Checked
+    /// It is your responsibility to ensure that you produce a syntactically correct query here,
+    /// this API has no way to check it for you.
+    pub fn into_query_scalar<T>(
+        mut self,
+    ) -> QueryScalar<'static, DB, T, <DB as Database>::Arguments<'args>>
+    where
+        DB: Database,
+        (T,): for<'r> FromRow<'r, DB::Row>,
+    {
+        crate::query_scalar::query_scalar_with(
+            AssertQuerySafe(self.query),
+            self.arguments.expect(TAKE_ARGUMENTS_ERR),
+        )
+    }
+}
+
+impl<'args, DB: Database> From<QueryBuilder<'args, DB>>
+    for Query<'static, DB, DB::Arguments<'args>>
+where
+    // Somewhat redundant trait bound, but needed to satisfy the compiler.
+    DB::Arguments<'args>: IntoArguments<'args, DB>,
+{
+    #[inline]
+    fn from(builder: QueryBuilder<'args, DB>) -> Self {
+        builder.into_query()
+    }
+}
+
+impl<'args, DB: Database, O> From<QueryBuilder<'args, DB>>
+    for QueryAs<'static, DB, O, DB::Arguments<'args>>
+where
+    // Somewhat redundant trait bound, but needed to satisfy the compiler.
+    DB::Arguments<'args>: IntoArguments<'args, DB>,
+    O: for<'r> FromRow<'r, DB::Row>,
+{
+    #[inline]
+    fn from(builder: QueryBuilder<'args, DB>) -> Self {
+        builder.into_query_as()
+    }
+}
+
+impl<'args, DB: Database, T> From<QueryBuilder<'args, DB>>
+    for QueryScalar<'static, DB, T, DB::Arguments<'args>>
+where 
+    // Somewhat redundant trait bound, but needed to satisfy the compiler.
+    DB::Arguments<'args>: IntoArguments<'args, DB>,
+    (T,): for<'r> FromRow<'r, DB::Row>,
+{
+    #[inline]
+    fn from(builder: QueryBuilder<'args, DB>) -> Self {
+        builder.into_query_scalar()
     }
 }
 

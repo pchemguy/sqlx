@@ -45,7 +45,7 @@ where
     A: Send + IntoArguments<'q, DB>,
 {
     #[inline]
-    fn sql(&self) -> &'q str {
+    fn sql(&self) -> &str {
         match &self.statement {
             Either::Right(statement) => statement.sql(),
             Either::Left(sql) => sql.as_str(),
@@ -271,7 +271,7 @@ where
     A: IntoArguments<'q, DB>,
 {
     #[inline]
-    fn sql(&self) -> &'q str {
+    fn sql(&self) -> &str {
         self.inner.sql()
     }
 
@@ -515,23 +515,28 @@ where
 /// At some point, you'll likely want to include some form of dynamic input in your query, possibly from the user.
 ///
 /// Your first instinct might be to do something like this:
-/// ```rust,no_run
-/// # async fn example() -> sqlx::Result<()> {
+/// ```rust,compile_fail
+/// # use sqlx_core::query_string::AssertQuerySafe;
+///  async fn example() -> sqlx::Result<()> {
 /// # let mut conn: sqlx::PgConnection = unimplemented!();
 /// // Imagine this is input from the user, e.g. a search form on a website.
 /// let user_input = "possibly untrustworthy input!";
 ///
 /// // DO NOT DO THIS unless you're ABSOLUTELY CERTAIN it's what you need!
 /// let query = format!("SELECT * FROM articles WHERE content LIKE '%{user_input}%'");
+///
 /// // where `conn` is `PgConnection` or `MySqlConnection`
 /// // or some other type that implements `Executor`.
-/// let results = sqlx::query(&query).fetch_all(&mut conn).await?;
+/// let results = sqlx::query(query).fetch_all(&mut conn).await?;
 /// # Ok(())
 /// # }
 /// ```
 ///
 /// The example above showcases a **SQL injection vulnerability**, because it's trivial for a malicious user to craft
 /// an input that can "break out" of the string literal.
+///
+/// Through the [`QuerySafeStr`] trait, the design of SQLx actually statically prevents
+/// the introduction of such a vulnerability, but for argument's sake let's pretend this is allowed.
 ///
 /// For example, if they send the input `foo'; DELETE FROM articles; --`
 /// then your application would send the following to the database server (line breaks added for clarity):
@@ -620,10 +625,22 @@ where
 ///
 /// As an additional benefit, query parameters are usually sent in a compact binary encoding instead of a human-readable
 /// text encoding, which saves bandwidth.
+///
+/// ### Owned or Dynamic Query Strings
+/// `query()` and friends use the [`QuerySafeStr`] trait to guard against SQL injection at compile
+/// time; by default, the only string type that implements this trait is `&'static str` which,
+/// barring abuse of [`String::leak()`][std::string::String::leak], means that only string literals
+/// or constants can be used directly as SQL queries.
+///
+/// However, you may occasionally find the need to execute a dynamically constructed query string,
+/// or execute a query string from (trusted!) user input. For the former case, you may find
+/// [`QueryBuilder`][crate::query_builder::QueryBuilder] useful, but for simpler use-cases
+/// or for externally-provided query strings,
+/// you may use [`AssertQuerySafe`][crate::query_string::AssertQuerySafe] to bypass this check.
 pub fn query<'q, DB, SQL>(sql: SQL) -> Query<'q, DB, <DB as Database>::Arguments<'q>>
 where
     DB: Database,
-    SQL: QuerySafeStr,
+    SQL: QuerySafeStr<'q>,
 {
     Query {
         database: PhantomData,
@@ -639,6 +656,7 @@ where
 pub fn query_with<'q, DB, SQL, A>(sql: SQL, arguments: A) -> Query<'q, DB, A>
 where
     DB: Database,
+    SQL: QuerySafeStr<'q>,
     A: IntoArguments<'q, DB>,
 {
     Query {

@@ -28,7 +28,7 @@ where
     A: 'q + IntoArguments<'q, DB>,
 {
     #[inline]
-    fn sql(&self) -> &'q str {
+    fn sql(&self) -> &str {
         self.inner.sql()
     }
 
@@ -343,6 +343,7 @@ where
 pub fn query_as<'q, DB, SQL, O>(sql: SQL) -> QueryAs<'q, DB, O, <DB as Database>::Arguments<'q>>
 where
     DB: Database,
+    SQL: QuerySafeStr<'q>,
     O: for<'r> FromRow<'r, DB::Row>,
 {
     QueryAs {

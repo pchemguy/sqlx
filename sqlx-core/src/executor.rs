@@ -192,7 +192,7 @@ pub trait Executor<'c>: Send + Debug + Sized {
 ///
 pub trait Execute<'q, DB: Database>: Send + Sized {
     /// Gets the SQL that will be executed.
-    fn sql(&self) -> &'q str;
+    fn sql(&self) -> &str;
 
     /// Gets the previously cached statement, if available.
     fn statement(&self) -> Option<&DB::Statement<'q>>;
@@ -212,7 +212,7 @@ pub trait Execute<'q, DB: Database>: Send + Sized {
 //       involved to write `conn.execute(format!("SELECT {val}"))`
 impl<'q, DB: Database> Execute<'q, DB> for &'q str {
     #[inline]
-    fn sql(&self) -> &'q str {
+    fn sql(&self) -> &str {
         self
     }
 
@@ -234,7 +234,7 @@ impl<'q, DB: Database> Execute<'q, DB> for &'q str {
 
 impl<'q, DB: Database> Execute<'q, DB> for (&'q str, Option<<DB as Database>::Arguments<'q>>) {
     #[inline]
-    fn sql(&self) -> &'q str {
+    fn sql(&self) -> &str {
         self.0
     }
 

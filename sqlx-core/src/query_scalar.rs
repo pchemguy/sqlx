@@ -27,7 +27,7 @@ where
     A: 'q + IntoArguments<'q, DB>,
 {
     #[inline]
-    fn sql(&self) -> &'q str {
+    fn sql(&self) -> &str {
         self.inner.sql()
     }
 
@@ -326,7 +326,7 @@ pub fn query_scalar<'q, DB, SQL, O>(
 where
     DB: Database,
     SQL: QuerySafeStr<'q>,
-    O: Type<DB> + for<'r> Decode<'r, DB>,
+    (O,): for<'r> FromRow<'r, DB::Row>,
 {
     QueryScalar {
         inner: query_as(sql),
@@ -345,7 +345,7 @@ where
     DB: Database,
     SQL: QuerySafeStr<'q>,
     A: IntoArguments<'q, DB>,
-    O: Type<DB> + for<'r> Decode<'r, DB>,
+    (O,): for<'r> FromRow<'r, DB::Row>,
 {
     QueryScalar {
         inner: query_as_with(sql, arguments),
@@ -358,7 +358,7 @@ pub fn query_statement_scalar<'q, DB, O>(
 ) -> QueryScalar<'q, DB, O, <DB as Database>::Arguments<'_>>
 where
     DB: Database,
-    O: Type<DB> + for<'r> Decode<'r, DB>,
+    (O,): for<'r> FromRow<'r, DB::Row>,
 {
     QueryScalar {
         inner: query_statement_as(statement),
@@ -373,7 +373,7 @@ pub fn query_statement_scalar_with<'q, DB, O, A>(
 where
     DB: Database,
     A: IntoArguments<'q, DB>,
-    O: Type<DB> + for<'r> Decode<'r, DB>,
+    (O,): for<'r> FromRow<'r, DB::Row>,
 {
     QueryScalar {
         inner: query_statement_as_with(statement, arguments),
